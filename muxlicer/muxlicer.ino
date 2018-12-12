@@ -1,13 +1,4 @@
-//////////////////////////
-// BEFACO MUXLICER FIRMWARE V1.1
-// Ago 2018
-// Coded By Eloi Flores
-/////////////
-// CC-BY-NC//
-//////////////////////////
-
-
-/// LIBRARIES
+ /// LIBRARYS
 
 #include <TimerOne.h>
 #include <ClickEncoder.h>
@@ -115,7 +106,6 @@ bool clock_detect = false;
 bool start_on = false;
 bool next_start_on = false;
 bool first_start = false;
-bool first_start_2 = false;
 bool start_stop_debounced = false;
 
 bool start_stop_down_first = true;
@@ -195,9 +185,6 @@ unsigned long EEPROM_counter = 0;
 
 bool new_code = false;
 
-bool no_encoder_direction_change = true;
-bool encoder_direction = false;
-
 /// EDITABLES
 
 unsigned int tempo_increment = 200;
@@ -207,7 +194,7 @@ int max_clk_in_mult = 15;
 int min_clk_in_mult = -15;
 
 int max_clk_out_mult = 15;
-int min_clk_out_mult = -15;
+int min_clk_out_mult = -15; 
 
 unsigned int full_gate_down = 5000; // approximately add 3000 to the desired value
 
@@ -243,10 +230,11 @@ void setup() {
   pinMode (one_shot_switch, INPUT_PULLUP);
   pinMode (clock_input, INPUT_PULLUP);
 
-  pinMode (encoder_button, INPUT_PULLUP);
 
+  pinMode (encoder_button, INPUT_PULLUP);
   pinMode (encoder_A, INPUT_PULLUP);
   pinMode (encoder_B, INPUT_PULLUP);
+
 
   // OUTPUTS
   pinMode (mux_A_0_pin, OUTPUT);
@@ -260,9 +248,13 @@ void setup() {
   pinMode (enable_mux, OUTPUT);
 
   pinMode (eoc_out, OUTPUT);
-  
+
+
+  /// Encoder
+  encoder = new ClickEncoder(encoder_A, encoder_B, encoder_button);
   Timer1.initialize(1000);
   Timer1.attachInterrupt(timerIsr);
+
 
   /// read TEMPO from EEPROM
   main_tempo = (EEPROM.read(0) & 0xFF) + (((long)EEPROM.read(1) << 8) & 0xFFFF) + (((long)EEPROM.read(2) << 16) & 0xFFFFFF) + (((long)EEPROM.read(3) << 24) & 0xFFFFFFFF);
@@ -296,7 +288,6 @@ void setup() {
   }
   else {
     range_value = 1023;
-    old_range_value = range_value;
     write_range_to_EEPROM();
   }
   Timer1.pwm (range_output, range_value);
@@ -357,40 +348,6 @@ void setup() {
     no_clock_out_when_stop = 0;
     write_no_clock_when_stop_to_EEPROM ();
   }
-  ///// falta llegir la eeprom
-
-
-
-  if (!new_code) {
-    encoder_direction = EEPROM.read(20);
-  }
-  else {
-    encoder_direction = 0;
-    write_encoder_direction_to_EEPROM ();
-  }
-
-  if (!digitalRead(encoder_button)) {
-    no_encoder_direction_change = false;
-    for (unsigned long i = 0 ; i < 10000 ; i++) {
-      if (digitalRead(encoder_button)) {
-        no_encoder_direction_change = true;
-        break;
-      }
-    }
-  }
-  if (!no_encoder_direction_change) {
-    encoder_direction = !encoder_direction;
-    write_encoder_direction_to_EEPROM ();
-  }
-
-
-  if (encoder_direction) {
-    encoder = new ClickEncoder(encoder_B, encoder_A, encoder_button);
-  }
-  else {
-    encoder = new ClickEncoder(encoder_A, encoder_B, encoder_button);
-  }
-
 
 
 }
@@ -424,8 +381,7 @@ void loop() {
     //Serial.print(" // mul_aomunt: ");        Serial.println(mult_amount);
     //Serial.print(" // range_value: ");        Serial.println(range_value);
     //Serial.print(" // INT: ");        Serial.println(main_tempo);
-    //  Serial.print(" // No_clk_out: ");        Serial.println(no_clock_out_when_stop);
-        //  Serial.print(" // range_value: ");        Serial.println(range_value);
+      //  Serial.print(" // No_clk_out: ");        Serial.println(no_clock_out_when_stop);
   }
 
   //one_shot_reset_control ();

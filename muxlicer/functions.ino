@@ -317,10 +317,6 @@ void write_no_clock_when_stop_to_EEPROM () {
   EEPROM.write(15, no_clock_out_when_stop);
 }
 
-void write_encoder_direction_to_EEPROM () {
-  EEPROM.write(20, encoder_direction);
-}
-
 
 void read_start_toggle () {
   //// START STOP TOGGLE CONTROL
@@ -350,24 +346,12 @@ void read_start_toggle () {
           old_micros_mult = current_micros;
           old_clock_out = current_micros;
           old_internal_clock = current_micros;
-
-          if (no_clock_out_when_stop) {
-            first_start_2 = false;
-            gate_counter_old = 0;
-            old_micros_mult = 0;
-            old_clock_out = 0;
-            old_internal_clock = 0;
-          }
-          else {
-            first_start_2 = true;
-          }
         }
       }
     }
 
     if (!start_stop_hold) {
       if (current_micros > start_stop_counter + hold_time_no_clock_out) {
-        Serial.println("CHACHACH");
         no_clock_out_when_stop = !no_clock_out_when_stop;
         write_no_clock_when_stop_to_EEPROM ();
         digitalWrite(clock_out_led, HIGH);
@@ -382,7 +366,7 @@ void read_start_toggle () {
       start_stop_down_first = false;
       start_stop_counter = current_micros;
     }
-
+    
     if (current_micros > start_stop_counter + start_stop_debounce_time) {
       start_stop_pressed = false;
       digitalWrite(clock_out_led, LOW);
@@ -785,12 +769,7 @@ void read_clock () {
       calculate_clock_out ();
       if (clock_out_mult > 0) {                 /// CLOCK OUT MULTIPLIER
         old_clock_out = current_micros;
-        if (no_clock_out_when_stop && !start_on) {
-          digitalWrite(clock_out, HIGH);
-        }
-        else {
-          digitalWrite(clock_out, LOW);
-        }
+        digitalWrite(clock_out, LOW);
         digitalWrite(clock_out_led, HIGH);
         clock_out_mult_counter = -1;
         clock_flag = HIGH;
@@ -805,24 +784,14 @@ void read_clock () {
           clock_out_state = !clock_out_state;
           //
           old_clock_out = current_micros;
-          if (no_clock_out_when_stop && !start_on) {
-            digitalWrite(clock_out, HIGH);
-          }
-          else {
-            digitalWrite(clock_out, LOW);
-          }
+          digitalWrite(clock_out, clock_out_state);
           digitalWrite(clock_out_led, !clock_out_state);
           clock_out_div_counter = 0;
         }
       }
       else {                                   //// CLOCK OUT NEUTRAL
         old_clock_out = current_micros;
-        if (no_clock_out_when_stop && !start_on) {
-          digitalWrite(clock_out, HIGH);
-        }
-        else {
-          digitalWrite(clock_out, LOW);
-        }
+        digitalWrite(clock_out, LOW);
         digitalWrite(clock_out_led, HIGH);
         clock_flag = HIGH;
         clock_out_state = HIGH;
@@ -896,7 +865,6 @@ void next_address () {
     next_address_flag = false;
     address_counter++;
     address_counter = address_counter & B00000111;
-    first_start_2 = false;
     if (counter_active) {
       refresh_mux (address_counter);                                             //// COUNTER ACTIVE ( address pot minimum)
     }
@@ -922,11 +890,8 @@ void next_step () {
     gate_counter_old = current_micros;
     old_micros_mult = current_micros;
 
-
     gate_delay_counter = current_micros;
-    if (!first_start_2) {
-      gate_delay_flag = true;
-    }
+    gate_delay_flag = true;
 
     if (address_counter == 7) {
       if (one_shot_state) {
