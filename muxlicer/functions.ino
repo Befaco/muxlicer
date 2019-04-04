@@ -471,7 +471,7 @@ void read_address () {
       counter_active = LOW;
       selected_step = 0;
       break;
-    case 1020 ... 1023:
+    case 1016 ... 1023:
       counter_active = HIGH;
       break;
   }
