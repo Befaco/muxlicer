@@ -1,8 +1,12 @@
-# Muxlicer v1.2 
+# Muxlicer v1.3
 
 This code is made for Befaco's Muxlicer module. A sequential signal processor divided in three main blocks: a Digital Step Controller, a Gate Generator and an Analog Switch (a.k.a. Mux/DeMux)
 Find further information [here](https://www.befaco.org/en/muxlicer/)
 This code will work in any hardware revision up to PCB v1.2
+
+## Changes:
+
+Changed Address Pot range to make Run section wider. This solves issues with rare units that get stuck.
 
 ## Dependencies:
 
