@@ -656,7 +656,7 @@ void read_clock () {
   current_micros = micros();
 
   if (clock_detect) {
-    if ((digitalRead(clock_input)) && (external_clock_first == false)) {                      /// IF THE CLOCK IS HIGH AND IT IS THE FIRST TIME IT IS,
+    if ((!digitalRead(clock_input)) && (external_clock_first == false)) {                      /// IF THE CLOCK IS NOT HIGH AND IT IS THE FIRST TIME IT IS,
       ext_clock = current_micros - old_external_clock;
       old_external_clock =  current_micros;
       external_clock_first = true;
@@ -804,7 +804,7 @@ void read_clock () {
       }
     }
   }
-  if ((!digitalRead(clock_input)) && (external_clock_first)) external_clock_first = 0;
+  if ((digitalRead(clock_input)) && (external_clock_first)) external_clock_first = 0;
 
 }
 
@@ -1183,4 +1183,3 @@ void confirmation_blink (bool myState) {
   }
 
 }
-
