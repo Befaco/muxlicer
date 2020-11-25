@@ -1,8 +1,8 @@
 # Muxlicer v1.4
 
 This code is made for Befaco's Muxlicer module. A sequential signal processor divided in three main blocks: a Digital Step Controller, a Gate Generator and an Analog Switch (a.k.a. Mux/DeMux)
-Find further information [here](https://www.befaco.org/en/muxlicer/)
-This code will work in any hardware revision from PCB v1.3. Note this code will have issues in PCBs 1.2 and below
+Find further information [here](https://www.befaco.org/muxlicer-2/)
+This code will work in any hardware revision from PCB v1.3. Note this code will have issues in PCBs 1.2 and below.
 
 ## Changes:
 
@@ -11,7 +11,7 @@ Changed input clock behaviour. This had an incompatibility with hardware v1.1.
 
 ## Dependencies:
 
-[TimerOne]:http://playground.arduino.cc/Code/Timer1
+[TimerOne](http://playground.arduino.cc/Code/Timer1) Also Available from Libraries manager.
 [ClickEncoder](https://github.com/0xPIT/encoder/)
 
 ## Uploading the firmware
@@ -32,7 +32,7 @@ Download the libraries  (Rotary encoder) and install them following the instruct
 Connect the programmer to the ICSP conector in the back of the module. Pay special attention to the pinout when you plug the module. You can check this link for more information about ICSP https://www.arduino.cc/en/Tutorial/ArduinoISP
 
 6. Upgrading
-Press "Open" and search the file "BURST.ino" located on the "BURST" folder. Go to "Sketch" and hit "Upload using programmer".
+Press "Open" and search the file "muxlicer.ino" located on the "BURST" folder. Go to "Sketch" and hit "Upload using programmer".
 
 If everything goes well you should see a "Done uploading" message in a few seconds. If something happens during the upgrade, check your Arduino settings following the instructions of this link https://www.arduino.cc/en/Guide/Troubleshooting
 
