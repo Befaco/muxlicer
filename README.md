@@ -12,6 +12,7 @@ Changed input clock behaviour. This had an incompatibility with hardware v1.1.
 ## Dependencies:
 
 [TimerOne](http://playground.arduino.cc/Code/Timer1) Also Available from Libraries manager.
+
 [ClickEncoder](https://github.com/0xPIT/encoder/)
 
 ## Uploading the firmware
