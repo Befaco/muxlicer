@@ -1,12 +1,16 @@
-# Muxlicer v1.4
+# Muxlicer v1.5
 
 This code is made for Befaco's Muxlicer module. A sequential signal processor divided in three main blocks: a Digital Step Controller, a Gate Generator and an Analog Switch (a.k.a. Mux/DeMux)
 Find further information [here](https://www.befaco.org/muxlicer-2/)
 This code will work in any hardware revision from PCB v1.3. Note this code will have issues in PCBs 1.2 and below.
 
-## Changes:
+## Changes in V1.5:
 
-Changed input clock behaviour. This had an incompatibility with hardware v1.1. 
+Improvement: Addres knob "Run" range is now bigger so it maches better the pannel graphics and is less voltage sensitive
+
+Improvement: Defaul clock mode changed to: Clock out stop when Muxlicer stop 
+
+Bug fix: Clock out is totally silence when it should be (Bug fix by Andy B. Many thanks Andy!)
 
 
 ## Dependencies:
@@ -40,6 +44,7 @@ If everything goes well you should see a "Done uploading" message in a few secon
 ## Credits.
 
 Coded By Eloi Flowers from Winter modular.
+Clock bug fix by Andy Butler.
 
 
 
