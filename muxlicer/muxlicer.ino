@@ -68,7 +68,7 @@ unsigned long clock_out_tempo = 0;
 bool clk_out_mul_changed = false;
 bool clock_flag = false;
 bool clock_out_state = true;
-bool no_clock_out_when_stop = false;
+bool no_clock_out_when_stop = true;
 bool clock_out_led_always_high = false;
 
 bool first_no_clock_detect = false;
@@ -345,7 +345,7 @@ void setup() {
 
   }
   else {
-    no_clock_out_when_stop = 0;
+    no_clock_out_when_stop = 1;
     write_no_clock_when_stop_to_EEPROM ();
   }
 
@@ -395,9 +395,3 @@ void loop() {
   control_clock_out();
   gate_to_low_control ();
 }
-
-
-
-
-
-

@@ -439,39 +439,39 @@ void read_address () {
   ///// ADDRESS CV/pot
   address_value = analogRead(address_input);
   switch (address_value) {
-    case 0 ... 122:
+    case 0 ... 112:
       counter_active = LOW;
       selected_step = 7;
       break;
-    case 127 ... 249:
+    case 117 ... 239:
       counter_active = LOW;
       selected_step = 6;
       break;
-    case 254 ... 376:
+    case 244 ... 366:
       counter_active = LOW;
       selected_step = 5;
       break;
-    case 381 ... 503:
+    case 371 ... 493:
       counter_active = LOW;
       selected_step = 4;
       break;
-    case 508 ... 630:
+    case 498 ... 618:
       counter_active = LOW;
       selected_step = 3;
       break;
-    case 635 ... 757:
+    case 625 ... 747:
       counter_active = LOW;
       selected_step = 2;
       break;
-    case 762 ... 884:
+    case 752 ... 874:
       counter_active = LOW;
       selected_step = 1;
       break;
-    case 889 ... 1011:
+    case 879 ... 1001:
       counter_active = LOW;
       selected_step = 0;
       break;
-    case 1016 ... 1023:
+    case 1006 ... 1023:
       counter_active = HIGH;
       break;
   }
@@ -653,8 +653,22 @@ void read_mult_pot () {
 
 void read_clock () {
   ///////////////////////////////ext
-  current_micros = micros();
+  /*andyB additions. 
+   *Holding the Start Switch up for more than 3 seconds should turn the clock out off when 
+   *Mux is stopped. 
+   *With the official code this didn't quite work, there was still a very short pulse output.
+   *This is my attempt to fix that. 
+   *This solution found by trial and error based on guesswork, I haven't traced out all the code.
+   *I've tested the clock out as best I can, it seems just as good.
+   *There may be cases where clock is missing or late that I did not find, if so...revert!
+   */
+  bool clock_running = true;// andyB SET UP NEW VARIABLE
+  clock_running = !no_clock_out_when_stop||start_on||one_shot_window;//i.e. clock is always running, unless Mux is stopped and "no_clock_out_when_stop" 
 
+  
+  
+  current_micros = micros();
+  
   if (clock_detect) {
     if ((!digitalRead(clock_input)) && (external_clock_first == false)) {                      /// IF THE CLOCK IS NOT HIGH AND IT IS THE FIRST TIME IT IS,
       ext_clock = current_micros - old_external_clock;
@@ -679,8 +693,10 @@ void read_clock () {
       calculate_clock_out ();                     /// count the tics to create the clock out bearing in mind the clock out multiplier, triggering
       if (clock_out_mult > 0) {                 /// CLOCK OUT MULTIPLIER
         old_clock_out = current_micros;
-        digitalWrite(clock_out, LOW);
-        digitalWrite(clock_out_led, HIGH);
+        if( clock_running ){//andyB ADDED CONDITION
+          digitalWrite(clock_out, LOW);
+          digitalWrite(clock_out_led, HIGH);
+        }
         clock_out_mult_counter = -1;
         clock_flag = HIGH;
         clock_out_state = HIGH;
@@ -694,16 +710,20 @@ void read_clock () {
           clock_out_state = HIGH;
           //
           old_clock_out = current_micros;
-          digitalWrite(clock_out, LOW);
-          digitalWrite(clock_out_led, HIGH);
+          if( clock_running ){//andyB ADDED CONDITION
+            digitalWrite(clock_out, LOW);
+            digitalWrite(clock_out_led, HIGH);
+          }
           clock_out_div_counter = 0;
         }
 
       }
       else {                                   //// CLOCK OUT NEUTRAL
         old_clock_out = current_micros;
-        digitalWrite(clock_out, LOW);
-        digitalWrite(clock_out_led, HIGH);
+        if( clock_running ){//andyB ADDED CONDITION
+          digitalWrite(clock_out, LOW);//bug
+          digitalWrite(clock_out_led, HIGH);
+        }
         clock_flag = HIGH;
         clock_out_state = HIGH;
       }
@@ -769,8 +789,10 @@ void read_clock () {
       calculate_clock_out ();
       if (clock_out_mult > 0) {                 /// CLOCK OUT MULTIPLIER
         old_clock_out = current_micros;
-        digitalWrite(clock_out, LOW);
-        digitalWrite(clock_out_led, HIGH);
+        if( clock_running ){//andyB ADDED CONDITION
+          digitalWrite(clock_out, LOW);
+          digitalWrite(clock_out_led, HIGH);
+        }
         clock_out_mult_counter = -1;
         clock_flag = HIGH;
         clock_out_state = HIGH;
@@ -784,15 +806,19 @@ void read_clock () {
           clock_out_state = !clock_out_state;
           //
           old_clock_out = current_micros;
-          digitalWrite(clock_out, clock_out_state);
-          digitalWrite(clock_out_led, !clock_out_state);
+          if( clock_running||(clock_out_state=HIGH) ){//andyB ADDED CONDITION,let's it turn off clock in case it locks up
+            digitalWrite(clock_out, clock_out_state);
+            digitalWrite(clock_out_led, !clock_out_state);
+          }
           clock_out_div_counter = 0;
         }
       }
       else {                                   //// CLOCK OUT NEUTRAL
         old_clock_out = current_micros;
-        digitalWrite(clock_out, LOW);
-        digitalWrite(clock_out_led, HIGH);
+        if( clock_running ) {//andyB ADDED CONDITION
+          digitalWrite(clock_out, LOW);
+          digitalWrite(clock_out_led, HIGH);
+        }
         clock_flag = HIGH;
         clock_out_state = HIGH;
       }
@@ -944,6 +970,8 @@ void gate_to_low_control () {
 
 
 void control_clock_out () {
+
+
 
   if ((start_on  || one_shot_window) || (!start_on && clock_detect)  || (!start_on && !no_clock_out_when_stop && !clock_detect)) {
 
@@ -1129,6 +1157,7 @@ void change_no_odds_clock_in () {
 }
 
 void initial_blink () {
+  digitalWrite(clock_out, HIGH);
   for (byte myRepetitions = 0 ; myRepetitions < 2 ; myRepetitions++) {
     for (unsigned int myTime = 0; myTime < blink_time ; myTime++) {
       digitalWrite(enable_mux, LOW);
@@ -1148,6 +1177,7 @@ void initial_blink () {
       }
     }
   }
+  digitalWrite(clock_out, LOW);
 }
 
 void confirmation_blink (bool myState) {
