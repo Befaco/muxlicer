@@ -252,7 +252,7 @@ void setup() {
 
   /// Encoder
   encoder = new ClickEncoder(encoder_A, encoder_B, encoder_button);
-  Timer1.initialize(1000);
+  Timer1.initialize(100);
   Timer1.attachInterrupt(timerIsr);
 
 
