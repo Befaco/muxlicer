@@ -1,403 +1,1236 @@
- /// LIBRARYS
+void read_clock_detect_input () {
+  clock_detect = !digitalRead(clock_detect_input);
+  if (!clock_detect) {
+    if (first_no_clock_detect) {
+      first_no_clock_detect = false;
+      clk_in_mult = 0;
+      write_clock_in_mult_to_EEPROM ();
+    }
+  }
+  else {
+    first_no_clock_detect = true;
+  }
+}
 
-#include <TimerOne.h>
-#include <ClickEncoder.h>
-#include <EEPROM.h>
+void read_encoder () {
+  if (encoder_button_state == 3) {
+    if (current_micros - tap_tempo > 300000) {
+      encoderValue += encoder->getValue();              //// CHECK THE ENCODER TO KNOW IF we are changing the clock output
+      if (encoderValue != lastEncoderValue) {
+        lastEncoderValue = encoderValue;
+        if (encoderValue >= 4) {                      ///// INCREASE CLOCK OUTPUT
+          encoderValue = 0;
+          clk_out_mul_changed = true;
+          if (no_odd_clocks) {
+            no_odd_clock_out_index--;
+            if (no_odd_clock_out_index < 0) no_odd_clock_out_index = 0;
+            clock_out_mult = no_odd_clocks_array [no_odd_clock_out_index];
+          }
+          else {
+            clock_out_mult--;
+          }
+        }
+        else if (encoderValue <= -4) {                 ///// DECREASE CLOCK OUTPUT
+          encoderValue = 0;
+          clk_out_mul_changed = true;
+          if (no_odd_clocks) {
+            no_odd_clock_out_index++;
+            if (no_odd_clock_out_index > 8) no_odd_clock_out_index = 8;
+            clock_out_mult = no_odd_clocks_array [no_odd_clock_out_index];
+          }
+          else {
+            clock_out_mult++;
+          }
+
+        }
+        if (clock_out_mult > max_clk_out_mult) {        ///// CLOCK OUTPUT MULT LIMITER
+          clock_out_mult = max_clk_out_mult;
+        }
+        if (clock_out_mult < min_clk_out_mult) {
+          clock_out_mult = min_clk_out_mult;
+        }
+        old_tap_tempo = current_micros + 5010000;
+      }
 
 
-/// Encoder
-ClickEncoder *encoder;
-int16_t lastEncoderValue, encoderValue;
+      if (digitalRead(one_shot_switch) == 0 ) {             //////////    RANGE DOWN
+        bitWrite(one_shot_switch_state, 0, 1);
+      }
+      else {
+        bitWrite(one_shot_switch_state, 0, 0);
+      }
 
-bool timer1_interrupt_flag = false;
-void timerIsr() {
-  //encoder->service();//andyB, if this is called at the wrong point in loop there can be a spurious clock from Mex
-  timer1_interrupt_flag = true;// so just flag it needs to be done
+      if (one_shot_switch_state == 1) {
+        bitWrite(one_shot_switch_state, 1, 1);
+        first_range_timer = current_micros;
+        acc_range = 1;
+        range_value -= acc_range;
+        if (range_value < min_range) {
+          range_value = min_range;
+        }
+        Timer1.pwm (range_output, range_value);
+        range_changed = true;
+        old_tap_tempo = current_micros + 5010000;
+      }
+      if (one_shot_switch_state == 3) {
+        if ((current_micros - first_range_timer) > 100000) {
+          first_range_timer = current_micros;
+          range_value -= acc_range;
+          acc_range = acc_range << 1;
+          if (acc_range > max_acc_range) acc_range = max_acc_range;
+          if (range_value < min_range) {
+            range_value = min_range;
+          }
+          Timer1.pwm (range_output, range_value);
+          range_changed = true;
+          old_tap_tempo = current_micros + 5010000;
+        }
+      }
+      if (one_shot_switch_state == 2) {
+        bitWrite(one_shot_switch_state, 1, 0);
+      }
+
+
+
+      if (digitalRead(start_stop_input) == 0 ) {             //////////    RANGE UP
+        bitWrite(start_stop_switch_state, 0, 1);
+      }
+      else {
+        bitWrite(start_stop_switch_state, 0, 0);
+      }
+
+      if (start_stop_switch_state == 1) {
+        bitWrite(start_stop_switch_state, 1, 1);
+        first_range_timer = current_micros;
+        acc_range = 1;
+        range_value += acc_range;
+
+        if (range_value > max_range) {
+          range_value = max_range;
+        }
+        Timer1.pwm (range_output, range_value);
+        range_changed = true;
+        old_tap_tempo = current_micros + 5010000;
+      }
+      if (start_stop_switch_state == 3) {
+        if ((current_micros - first_range_timer) > 100000) {
+          first_range_timer = current_micros;
+          acc_range = acc_range << 1;
+          if (acc_range > max_acc_range) acc_range = max_acc_range;
+          range_value += acc_range;
+          if (range_value > max_range) {
+            range_value = max_range;
+          }
+          Timer1.pwm (range_output, range_value);
+          range_changed = true;
+          old_tap_tempo = current_micros + 5010000;
+        }
+      }
+      if (start_stop_switch_state == 2) {
+        bitWrite(start_stop_switch_state, 1, 0);
+      }
+    }
+  }
+  else {
+    if (!clock_detect) {                                ///// encoder turned / internal tempo  >>>> chage tempo
+      encoderValue += encoder->getValue();
+      if (encoderValue != lastEncoderValue) {
+        encoder_time_stamp = current_micros;
+        if (encoder_first_time) {
+          encoder_first_time = false;
+          tempo_increment = tempo_increment_min;
+        }
+
+        lastEncoderValue = encoderValue;
+        if (encoderValue >= 4) {
+          encoderValue = 0;
+          internal_tempo += tempo_increment;
+        }
+        else if (encoderValue <= -4) {
+          encoderValue = 0;
+          internal_tempo -= tempo_increment;
+        }
+        if (internal_tempo < 500) internal_tempo = 500;
+        if (internal_tempo > 4200000000) internal_tempo = 500;
+        EEPROM_modified = true;
+        EEPROM_counter = current_micros;
+        tempo_increment = tempo_increment << 1;
+        if (tempo_increment > 4000) tempo_increment = 4000;
+        main_tempo = internal_tempo;
+      }
+      if (current_micros > encoder_time_stamp + 200000) {
+        encoder_first_time = true;
+      }
+    }
+    else {                                            ///// encoder turned / external tempo  >>>> clk in multiplier
+      encoderValue += encoder->getValue();
+      if (encoderValue != lastEncoderValue) {
+        lastEncoderValue = encoderValue;
+        if (encoderValue >= 4) {
+          encoderValue = 0;
+          if (no_odd_clocks) {
+            no_odd_clock_in_index--;
+            if (no_odd_clock_out_index < 0) no_odd_clock_out_index = 0;
+            clk_in_mult = no_odd_clocks_array [no_odd_clock_in_index];
+          }
+          else {
+            clk_in_mult--;
+          }
+        }
+        else if (encoderValue <= -4) {
+          encoderValue = 0;
+          if (no_odd_clocks) {
+            no_odd_clock_in_index++;
+            if (no_odd_clock_out_index > 8) no_odd_clock_out_index = 8;
+            clk_in_mult = no_odd_clocks_array [no_odd_clock_in_index];
+          }
+          else {
+            clk_in_mult++;
+          }
+        }
+        EEPROM_modified = true;
+        EEPROM_counter = current_micros;
+        if (clk_in_mult > max_clk_in_mult) {
+          clk_in_mult = max_clk_in_mult;
+        }
+        if (clk_in_mult < min_clk_in_mult) {
+          clk_in_mult = min_clk_in_mult;
+        }
+      }
+    }
+  }
+  if (EEPROM_modified) {
+    if (current_micros > EEPROM_counter + 3000000) {
+      EEPROM_modified = false;
+      write_tempo_to_EEPROM ();
+      write_clock_in_mult_to_EEPROM ();
+    }
+  }
+
 }
 
 
-//// PORTS DEFINITION
+void read_internal_clock_tap () {
+  /// TEMPO TAP
+  if (digitalRead(encoder_button) == 0 ) {
+    bitWrite(encoder_button_state, 0, 1);
+  }
+  else {
+    bitWrite(encoder_button_state, 0, 0);
+  }
 
-//INS
-const int mult_input = A0;   //// CV Multiplier IN / Divisor ; inverted ; 10V Range
-const int address_input = A1;    //// Address CV IN ; inverted ; 10V Range
-const int clock_detect_input = A2;  //// Detect external clock ; inverted
-const int reset_input = A3;         //// reset / on shoot input
-const int one_shot_switch = A4;     //// reset / one shoot toggle switch
-const int start_stop_input = A5;    //// start / stop toggle switch
-const int encoder_A = 2;
-const int encoder_B = 3;
-const int clock_input = 4;
-const int encoder_button = 5;
+  if (encoder_button_state == 1) {                              /// Tap tempo pressed
+    bitWrite(encoder_button_state, 1, 1);
+    tap_tempo = micros();
 
-//OUTS
-const int clock_out = 0;
-////remove next line if you want to debug
-const int clock_out_led = 1;
-
-const int mux_A_0_pin = 6;
-const int mux_A_1_pin = 7;
-const int mux_A_2_pin = 8;
-const int range_output = 9;   /// to control the range transistor
-const int all_gate_out = 10;  /// the output the outputs all the steps gates
-const int enable_mux = 13;    /// enable of the DG409 MUX
-const int eoc_out = 11;
-
-/// VARIABLES
-
-bool next_step_flag = false;
-bool next_address_flag = false;
-bool next_clock_flag = false;
-
-unsigned long main_tempo = 250000;
-unsigned long old_main_tempo = 250000;
-unsigned long old_internal_clock = 0;
-unsigned long internal_tempo = 250000;
-unsigned long mult_tempo = 0;
-unsigned long current_micros = 0;
-unsigned long old_micros = 0;
-unsigned long old_micros_mult = 0;
-unsigned long old_clock_out = 0;
-unsigned long next_address_stamp = 0;
-unsigned long gate_out_window = 0;
-
-int clock_out_mult = 3;
-int old_clock_out_mult = 0;
-
-unsigned int clock_out_mult_counter = -1;
-unsigned int clock_out_div_counter = 0;
-unsigned long clock_out_tempo = 0;
-bool clk_out_mul_changed = false;
-bool clock_flag = false;
-bool clock_out_state = true;
-bool no_clock_out_when_stop = true;
-bool clock_out_led_always_high = false;
-
-bool first_no_clock_detect = false;
-
-unsigned long clock_in_counter = 0;
-bool clock_in_counter_first = false;
-
-byte address_counter = 0;
-byte selected_step = 0;
-
-int mult_value = 0;
-byte mult_amount = 1;
-byte repetition_counter = 0;
-int address_value = 0;
+    if ( tap_tempo - old_tap_tempo < 3000000) {                 /// if the difference between taps is greater than 5 seconds we discard that diference and start over again
+      tap_tempo_array [tap_index] = tap_tempo - old_tap_tempo;
+      averaged_taps = 0;
+      for (int taps = 0 ; taps <= max_taps ; taps ++) {
+        averaged_taps = averaged_taps + tap_tempo_array [taps];
+      }
+      internal_tempo = averaged_taps / (max_taps + 1);
+      main_tempo = internal_tempo;
+      EEPROM_modified = true;
+      EEPROM_counter = current_micros;
+      averaged_taps = 0;
+      max_taps ++;
+      if (max_taps > 3) max_taps = 3;
+      tap_index ++;
+      if (tap_index > 3) tap_index = 0;
+    }
+    else {
+      max_taps = 0;
+      tap_index = 0;
+      averaged_taps = 0;
+    }
+    old_tap_tempo = tap_tempo;
 
 
-unsigned long eoc_time = 0;
-bool eoc_state = false;
-bool next_eoc = false;
+  }
+  if (encoder_button_state == 2) {
+    bitWrite(encoder_button_state, 1, 0);
+    if (range_changed) {
+      range_changed = false;
+      write_range_to_EEPROM();
+    }
+    if (clk_out_mul_changed) {
+      clk_out_mul_changed = false;
+      write_clock_out_mult_to_EEPROM();
+    }
+  }
+}
 
-unsigned int gate_delay_counter = 0;
-unsigned int gate_delay_amount = 1000;
-bool gate_delay_flag = false;
-
-
-int repetitions_counter = 0;
-
-bool counter_active = true;
-
-bool start_stop_estate = false;
-bool start_stop_pressed = false;
-bool start_stop_hold = true;
-unsigned long start_stop_counter = 0;
-bool clock_detect = false;
-bool start_on = false;
-bool next_start_on = false;
-bool first_start = false;
-bool start_stop_debounced = false;
-
-bool start_stop_down_first = true;
-
-unsigned long  current_external_clock = 0;
-unsigned long  ext_clock = 0;
-unsigned long  ext_clock_mult = 0;
-unsigned long  old_micros_address = 0;
-unsigned long  old_external_clock = 0;
-unsigned long gate_counter = 0;
-unsigned long gate_counter_old = 0;
-byte delay_mux = 10;
-byte division_counter = 0;
-
-int clk_in_mult = 0;
-int old_clk_in_mult = 0;
-
-byte start_stop_switch_state = 0;
-byte one_shot_switch_state = 0;
-
-
-/// tap tempo
-unsigned long tap_tempo = 0;
-unsigned long old_tap_tempo = 0;
-unsigned long tap_tempo_array[4] = {0, 0, 0, 0};
-byte max_taps = 0;
-byte tap_index = 0;
-unsigned long averaged_taps = 0;
-
-
-bool clock_divided_estate = false;
-
-bool first_gate = false;
-bool second_gate = false;
-
-bool no_gate_or_full = false;
-
-bool external_clock_first = false;
-bool reset_first = false;
-bool reset_state = false;
-bool one_shot_state = false;
-bool one_shot_first = false;
-bool one_shot_start = false;
-bool no_gate = false;
-bool first_one_shot_step = false;
-bool one_shot_window = false;
-unsigned long next_one_shot_window_close = 0;
-
-byte encoder_button_state = 0;
-unsigned long hold_encoder_button_counter_old = 0;
-unsigned long hold_encoder_button_counter = 0;
-bool encoder_first_time = true;
-unsigned long encoder_time_stamp = 0;
-
-bool range_adjust = 0;
-int range_value = 1023;
-int old_range_value = 2;
-int max_range = 1023;
-int min_range = 2;
-bool range_changed = false;
-bool first_range_switch = true;
-unsigned long first_range_timer = 0;
-unsigned int acc_range = 1;
-
-
-
-bool no_odd_gate_mode = 0;   //// to avoid choosing non-quadratic repetitions in gate mode pot
-bool no_odd_clocks = 0;       //// to avoid choosing non-quadratic repetitions in clock out or clock in mult/div
-int no_odd_clocks_array [9] = { -31, -15, -7, -3, -1, 0, 1, 3, 7};
-int no_odd_clock_out_index = 0;
-int no_odd_clock_in_index = 0;
-
-
-bool EEPROM_modified = false;
-unsigned long EEPROM_counter = 0;
-
-
-bool new_code = false;
-
-/// EDITABLES
-
-unsigned int tempo_increment = 200;
-unsigned int tempo_increment_min = 200;
-
-int max_clk_in_mult = 15;
-int min_clk_in_mult = -15;
-
-int max_clk_out_mult = 15;
-int min_clk_out_mult = -15; 
-
-unsigned int full_gate_down = 5000; // approximately add 3000 to the desired value
-
-unsigned int max_acc_range = 128;
-
-unsigned int blink_time = 200;
-
-unsigned long hold_time_no_clock_out = 3000000;
-
-unsigned long start_stop_debounce_time = 1500;
-
-//// BORRA
-
-unsigned long value1 = 0;
-unsigned long value2 = 0;
-unsigned long value3 = 0;
-unsigned long value4 = 0;
-unsigned long borra_old_counter = 0;
-unsigned long borra_counter = 0;
-bool borra_reset = 0;
-bool caca = false;
-
-void setup() {
-
-  //Serial.begin(115200);
-
-  /// INPUTS
-  pinMode (mult_input, INPUT);
-  pinMode (address_input, INPUT);
-  pinMode (clock_detect_input, INPUT);
-  pinMode (reset_input, INPUT_PULLUP);
-  pinMode (start_stop_input, INPUT_PULLUP);
-  pinMode (one_shot_switch, INPUT_PULLUP);
-  pinMode (clock_input, INPUT_PULLUP);
-
-
-  pinMode (encoder_button, INPUT_PULLUP);
-  pinMode (encoder_A, INPUT_PULLUP);
-  pinMode (encoder_B, INPUT_PULLUP);
-
-
-  // OUTPUTS
-  pinMode (mux_A_0_pin, OUTPUT);
-  pinMode (mux_A_1_pin, OUTPUT);
-  pinMode (mux_A_2_pin, OUTPUT);
-  pinMode (range_output, OUTPUT);
-  pinMode (clock_out, OUTPUT);
-  ////remove next line if you want to debug
-  pinMode (clock_out_led, OUTPUT);
-  pinMode (all_gate_out, OUTPUT);
-  pinMode (enable_mux, OUTPUT);
-
-  pinMode (eoc_out, OUTPUT);
-
-
-  /// Encoder
-  encoder = new ClickEncoder(encoder_A, encoder_B, encoder_button);
-  Timer1.initialize(100); //changed from 1000 to 100 for faster PWM to avoid ripple at CV Out
-  Timer1.attachInterrupt(timerIsr);//andyB causes issue with extra triggers
-
-
-  /// read TEMPO from EEPROM
-  main_tempo = (EEPROM.read(0) & 0xFF) + (((long)EEPROM.read(1) << 8) & 0xFFFF) + (((long)EEPROM.read(2) << 16) & 0xFFFFFF) + (((long)EEPROM.read(3) << 24) & 0xFFFFFFFF);
-  internal_tempo = main_tempo;
-  old_main_tempo = main_tempo;
-  old_internal_clock = main_tempo;
-  if (main_tempo  == 4294967295) {
-    new_code = true;
-    main_tempo = 240000;
-    internal_tempo = main_tempo;
+void write_tempo_to_EEPROM () {
+  /// WRITE TEMPO TO EEPROM TO HAVE THE LAST TEMPO AVAILABLE AFTER POWER CYCLE
+  if ( main_tempo != old_main_tempo) {
     old_main_tempo = main_tempo;
-    old_internal_clock = main_tempo;
-    write_tempo_to_EEPROM ();
+    EEPROM.write(0, main_tempo & 0xFF);
+    EEPROM.write(1, (main_tempo >> 8) & 0xFF);
+    EEPROM.write(2, (main_tempo >> 16) & 0xFF);
+    EEPROM.write(3, (main_tempo >> 24) & 0xFF);
   }
-
-
-  /// read external clock mult / div from EEPROM
-  if (!new_code) {
-    clk_in_mult = (EEPROM.read(4) & 0xFF) + (((long)EEPROM.read(5) << 8) & 0xFFFF) + (((long)EEPROM.read(6) << 16) & 0xFFFFFF) + (((long)EEPROM.read(7) << 24) & 0xFFFFFFFF);
+}
+void write_clock_in_mult_to_EEPROM () {
+  /// WRITE Clock in external mult / div TO EEPROM TO HAVE THE LAST value AVAILABLE AFTER POWER CYCLE
+  if ( clk_in_mult != old_clk_in_mult) {
     old_clk_in_mult = clk_in_mult;
+    EEPROM.write(4, clk_in_mult & 0xFF);
+    EEPROM.write(5, (clk_in_mult >> 8) & 0xFF);
+    EEPROM.write(6, (clk_in_mult >> 16) & 0xFF);
+    EEPROM.write(7, (clk_in_mult >> 24) & 0xFF);
   }
-  else {
-    clk_in_mult = 0;
-    write_clock_in_mult_to_EEPROM ();
-  }
-
-  /// read CV output range from EEPROM
-  if (!new_code) {
-    range_value = (EEPROM.read(16) & 0xFF) + (((long)EEPROM.read(17) << 8) & 0xFFFF) + (((long)EEPROM.read(18) << 16) & 0xFFFFFF) + (((long)EEPROM.read(19) << 24) & 0xFFFFFFFF);
+}
+void write_range_to_EEPROM () {
+  /// WRITE Range TO EEPROM TO HAVE THE LAST Value AFTER POWER CYCLE
+  if ( range_value != old_range_value) {
     old_range_value = range_value;
+    EEPROM.write(16, range_value & 0xFF);
+    EEPROM.write(17, (range_value >> 8) & 0xFF);
+    EEPROM.write(18, (range_value >> 16) & 0xFF);
+    EEPROM.write(19, (range_value >> 24) & 0xFF);
   }
-  else {
-    range_value = 1023;
-    write_range_to_EEPROM();
-  }
-  Timer1.pwm (range_output, range_value);
-  /// read clock_out_mult from EEPROM
-  if (!new_code) {
-    clock_out_mult = (EEPROM.read(10) & 0xFF) + (((long)EEPROM.read(11) << 8) & 0xFFFF) + (((long)EEPROM.read(12) << 16) & 0xFFFFFF) + (((long)EEPROM.read(13) << 24) & 0xFFFFFFFF);
+}
+
+void write_no_odd_gate_mode_to_EEPROM () {
+  /// WRITE no_odd_gate_mode TO EEPROM TO HAVE THE LAST Value chosen during POWER CYCLE
+  EEPROM.write(9, no_odd_gate_mode);
+}
+
+void write_clock_out_mult_to_EEPROM () {
+  /// WRITE clock out mult TO EEPROM TO HAVE THE LAST Value after power cycle
+  if ( clock_out_mult != old_clock_out_mult) {
     old_clock_out_mult = clock_out_mult;
+    EEPROM.write(10, clock_out_mult & 0xFF);
+    EEPROM.write(11, (clock_out_mult >> 8) & 0xFF);
+    EEPROM.write(12, (clock_out_mult >> 16) & 0xFF);
+    EEPROM.write(13, (clock_out_mult >> 24) & 0xFF);
   }
-  else {
-    clock_out_mult = 0;
-    write_clock_out_mult_to_EEPROM ();
+}
+
+void write_no_odd_clocks_to_EEPROM () {
+  /// WRITE no_odd_clocks TO EEPROM TO HAVE THE LAST Value chosen during POWER CYCLE
+  EEPROM.write(14, no_odd_clocks);
+}
+
+void write_no_clock_when_stop_to_EEPROM () {
+  EEPROM.write(15, no_clock_out_when_stop);
+}
+
+
+void read_start_toggle () {
+  //// START STOP TOGGLE CONTROL
+  start_stop_estate = !digitalRead (start_stop_input);                             //// Start_stop button
+
+  if ((start_stop_estate == true) && (start_stop_pressed == false) && digitalRead(encoder_button)) {                ///  Start_Stop first pressed
+    start_stop_pressed = true;
+    start_stop_debounced = false;
+    start_stop_counter = current_micros;
+    start_stop_down_first = true;
   }
 
-  /// read no_odd_gate_mode from EEPROM
-  if (!new_code) {
-    no_odd_gate_mode = EEPROM.read(9);
-  }
-  else {
-    no_odd_gate_mode = 0;
-    write_no_odd_gate_mode_to_EEPROM ();
-  }
-  if (!digitalRead(one_shot_switch)) {
-    no_odd_gate_mode = !no_odd_gate_mode;
-    write_no_odd_gate_mode_to_EEPROM();
-    confirmation_blink(no_odd_gate_mode);
-  }
-  else {
-    initial_blink ();
+  if ((start_stop_estate == true) && (start_stop_pressed == true)) {                //// STart Stop held
+    if (start_stop_debounced == false) {
+      if (current_micros > start_stop_counter + start_stop_debounce_time) {
+        start_stop_debounced = true;
+        start_stop_hold = false;
+        start_on = !start_on;
+
+        first_start = true;
+        division_counter = -clk_in_mult;
+        if (start_on) {
+          address_counter = 7;
+          next_address_flag = false;
+          next_step_flag = false;
+          gate_counter_old = current_micros;
+          old_micros_mult = current_micros;
+          old_clock_out = current_micros;
+          old_internal_clock = current_micros;
+        }
+      }
+    }
+
+    if (!start_stop_hold) {
+      if (current_micros > start_stop_counter + hold_time_no_clock_out) {
+        no_clock_out_when_stop = !no_clock_out_when_stop;
+        write_no_clock_when_stop_to_EEPROM ();
+        digitalWrite(clock_out_led, HIGH);
+        clock_out_led_always_high = true;
+        start_stop_hold = true;
+      }
+    }
   }
 
-  /// read no_odd_clocks from EEPROM
-  if (!new_code) {
-    no_odd_clocks = EEPROM.read(14);
-  }
-  else {
-    no_odd_clocks = 0;
-    write_no_odd_clocks_to_EEPROM ();
-  }
+  if ((start_stop_estate == false) && start_stop_pressed && start_stop_debounced) {              /// Start Stop released
+    if (start_stop_down_first) {
+      start_stop_down_first = false;
+      start_stop_counter = current_micros;
+    }
+    
+    if (current_micros > start_stop_counter + start_stop_debounce_time) {
+      start_stop_pressed = false;
+      digitalWrite(clock_out_led, LOW);
+      clock_out_led_always_high = false;
 
-  if (!digitalRead(start_stop_input)) {
-    no_odd_clocks = !no_odd_clocks;
-    write_no_odd_clocks_to_EEPROM();
-    confirmation_blink(no_odd_clocks);
+    }
   }
-  else {
-    initial_blink ();
-  }
-  if (no_odd_clocks) {
-    change_no_odds_clock_in();
-    change_no_odds_clock_out();
-    digitalWrite(enable_mux, HIGH);
-  }
-  if (!new_code) {
-    no_clock_out_when_stop = EEPROM.read(15);
+}
 
-  }
-  else {
-    no_clock_out_when_stop = 1;
-    write_no_clock_when_stop_to_EEPROM ();
-  }
 
+void read_one_shot_reset_input () {
+  /// RESET CONTROL
+
+  reset_state = digitalRead(reset_input);
+  if ((reset_state == false) && (reset_first == false) ) {                     /// reset_input jack
+
+    reset_first = true;
+    if (start_on) {
+      address_counter = 7;
+      if (one_shot_state) one_shot_start = true;
+    }
+    else {
+      one_shot_start = true;
+      address_counter = 0;
+      if (counter_active) {
+        refresh_mux (address_counter);                                                   //// COUNTER ACTIVE ( address pot minimum)
+      }
+      else {                                                                             //// COUNTER INACTIVE
+        refresh_mux (selected_step);
+      }
+
+      division_counter = -clk_in_mult;
+    }
+  }
+  if ((reset_state == true) && (reset_first == true)) {
+    reset_first = false;
+  }
+}
+
+void read_one_shot_reset_toggle () {
+
+  //// ONE SHOT / RESET BUTTON CONTROL
+  if ((!digitalRead(one_shot_switch)) && (one_shot_first == false) && digitalRead(encoder_button)) {                     /// reset_input toggle
+    one_shot_first = true;
+    if (start_on) {
+      address_counter = 7;
+      if (one_shot_state) one_shot_start = true;
+    }
+    else {
+      one_shot_start = true;
+      address_counter = 0;
+      if (counter_active) {
+        refresh_mux (address_counter);                                                   //// COUNTER ACTIVE ( address pot minimum)
+      }
+      else {                                                                             //// COUNTER INACTIVE
+        refresh_mux (selected_step);
+      }
+      division_counter = -clk_in_mult;
+    }
+
+    //division_counter = -clk_in_mult;
+  }
+  if ((digitalRead(one_shot_switch)) && (one_shot_first == true)) {
+    one_shot_first = false;
+  }
+}
+
+
+void read_address () {
+  ///// ADDRESS CV/pot
+  address_value = analogRead(address_input);
+  switch (address_value) {
+    case 0 ... 112:
+      counter_active = LOW;
+      selected_step = 7;
+      break;
+    case 117 ... 239:
+      counter_active = LOW;
+      selected_step = 6;
+      break;
+    case 244 ... 366:
+      counter_active = LOW;
+      selected_step = 5;
+      break;
+    case 371 ... 493:
+      counter_active = LOW;
+      selected_step = 4;
+      break;
+    case 498 ... 618:
+      counter_active = LOW;
+      selected_step = 3;
+      break;
+    case 625 ... 747:
+      counter_active = LOW;
+      selected_step = 2;
+      break;
+    case 752 ... 874:
+      counter_active = LOW;
+      selected_step = 1;
+      break;
+    case 879 ... 1001:
+      counter_active = LOW;
+      selected_step = 0;
+      break;
+    case 1006 ... 1023:
+      counter_active = HIGH;
+      break;
+  }
+}
+
+void read_mult_pot () {
+
+  mult_value = analogRead(mult_input);
+  switch (mult_value)  {
+    case 0 ... 96:                           //// NO GATE
+      no_gate = HIGH;
+      mult_amount = 1;
+      no_gate_or_full = true;
+      break;
+
+    case 108 ... 198:                          ///// FULL GATE
+      if ( !clock_detect) {
+        mult_tempo = internal_tempo;
+      }
+      else {
+        mult_tempo = ext_clock_mult;
+      }
+      no_gate_or_full = true;
+      no_gate = LOW;
+      mult_amount = 1;
+      break;
+
+    case 210 ... 301:                          ///// HALF GATE
+      if ( !clock_detect) {
+        mult_tempo = internal_tempo;
+      }
+      else {
+        mult_tempo = ext_clock_mult;
+      }
+      no_gate = LOW;
+      no_gate_or_full = false;
+      mult_amount = 1;
+      break;
+
+    case  313 ... 403:                        ///// x2
+      if ( !clock_detect) {
+        mult_tempo = internal_tempo >> 1;
+      }
+      else {
+        mult_tempo = ext_clock_mult >> 1;
+      }
+      no_gate = LOW;
+      no_gate_or_full = false;
+      mult_amount = 2;
+      break;
+
+    case 415 ... 506:                         ///// x3
+      if ( !clock_detect) {
+        if (no_odd_gate_mode) {
+          mult_tempo = internal_tempo >> 1;
+          mult_amount = 2;
+        }
+        else {
+          mult_tempo = internal_tempo / 3;
+          mult_amount = 3;
+        }
+      }
+      else {
+        if (no_odd_gate_mode) {
+          mult_tempo = ext_clock_mult >> 1;
+          mult_amount = 2;
+        }
+        else {
+          mult_tempo = ext_clock_mult / 3;
+          mult_amount = 3;
+        }
+      }
+      no_gate = LOW;
+      no_gate_or_full = false;
+      break;
+
+    case 518 ... 608:                           //// x4
+      if ( !clock_detect) {
+        mult_tempo = internal_tempo >> 2;
+      }
+      else {
+        mult_tempo = ext_clock_mult >> 2;
+      }
+      no_gate = LOW;
+      no_gate_or_full = false;
+      mult_amount = 4;
+      break;
+
+    case 620 ... 710:                           //// x5
+      if ( !clock_detect) {
+        if (no_odd_gate_mode) {
+          mult_tempo = internal_tempo >> 2;
+          mult_amount = 4;
+        }
+        else {
+          mult_tempo = internal_tempo / 5;
+          mult_amount = 5;
+        }
+      }
+      else {
+        if (no_odd_gate_mode) {
+          mult_tempo = ext_clock_mult >> 2;
+          mult_amount = 4;
+        }
+        else {
+          mult_tempo = ext_clock_mult / 5;
+          mult_amount = 5;
+        }
+      }
+      no_gate = LOW;
+      no_gate_or_full = false;
+      break;
+
+    case 722 ... 813:                      ///// x6
+      if ( !clock_detect) {
+        if (no_odd_gate_mode) {
+          mult_tempo = internal_tempo >> 2;
+          mult_amount = 4;
+        }
+        else {
+          mult_tempo = internal_tempo / 6;
+          mult_amount = 6;
+        }
+      }
+      else {
+        if (no_odd_gate_mode) {
+          mult_tempo = ext_clock_mult >> 2;
+          mult_amount = 4;
+        }
+        else {
+          mult_tempo = ext_clock_mult / 6;
+          mult_amount = 6;
+        }
+      }
+      no_gate = LOW;
+      no_gate_or_full = false;
+      break;
+
+    case 825 ... 915:                       ///// x7
+      if ( !clock_detect) {
+        if (no_odd_gate_mode) {
+          mult_tempo = internal_tempo >> 3;
+          mult_amount = 8;
+        }
+        else {
+          mult_tempo = internal_tempo / 7;
+          mult_amount = 7;
+        }
+      }
+      else {
+        if (no_odd_gate_mode) {
+          mult_tempo = ext_clock_mult >> 3;
+          mult_amount = 8;
+        }
+        else {
+          mult_tempo = ext_clock_mult / 7;
+          mult_amount = 7;
+        }
+      }
+      no_gate = LOW;
+      no_gate_or_full = false;
+      break;
+
+    case 927 ... 1023:                      ///// x8
+      if (!clock_detect) {
+        mult_tempo = internal_tempo >> 3;
+      }
+      else {
+        mult_tempo = ext_clock_mult >> 3;
+      }
+      mult_amount = 8;
+      no_gate = LOW;
+      no_gate_or_full = false;
+      break;
+  }
+  //mult_tempo -= 10;
+}
+
+
+void read_clock () {
+  ///////////////////////////////ext
+  /*andyB additions. 
+   *Holding the Start Switch up for more than 3 seconds should turn the clock out off when 
+   *Mux is stopped. 
+   *With the official code this didn't quite work, there was still a very short pulse output.
+   *This is my attempt to fix that. 
+   *This solution found by trial and error based on guesswork, I haven't traced out all the code.
+   *I've tested the clock out as best I can, it seems just as good.
+   *There may be cases where clock is missing or late that I did not find, if so...revert!
+   *
+   *Since inclusion of the above in the official firmware I had a problem when using Mex
+   *where a spurous trigger would occur on a switched off step when the previous one was switched to clock.
+   *This pulse was very short, indicative that the next clock pulse had arrived at Mex before the switch address had
+   *advanced.
+   *I've moved the code to physically start the clock pulse from read_clock() to control_clock_out().
+   *This has solved the problem with the Mex.
+   *If timing of the clock out has suffered then further work will be needed.
+   *The interrupt that powers the encoder could be replaced with a 1mS counter in the loop.
+   *Any digitalWrite() between read_clock() and control_clock_out() would need moving if possible.
+   *
+   *
+   */
+  bool clock_running = true;// andyB SET UP NEW VARIABLE
+  clock_running = !no_clock_out_when_stop||start_on||one_shot_window;//i.e. clock is always running, unless Mux is stopped and "no_clock_out_when_stop" 
+
+  
+  
+  current_micros = micros();
+  
+  if (clock_detect) {
+    if ((!digitalRead(clock_input)) && (external_clock_first == false)) {                      /// IF THE CLOCK IS NOT HIGH AND IT IS THE FIRST TIME IT IS,
+      ext_clock = current_micros - old_external_clock;
+      old_external_clock =  current_micros;
+      external_clock_first = true;
+
+      if (one_shot_start) {
+        one_shot_start = false;
+        one_shot_state = true;
+        address_counter = 7;
+        start_on = true;
+        repetition_counter = 0;
+        first_one_shot_step = true;
+        clock_out_state = LOW;
+      }
+      if (first_start) {
+        first_start = false;
+        address_counter = 7;
+        repetition_counter = 0;
+        clock_out_state = LOW;
+      }
+      calculate_clock_out ();                     /// count the tics to create the clock out bearing in mind the clock out multiplier, triggering
+      if (clock_out_mult > 0) {                 /// CLOCK OUT MULTIPLIER
+        old_clock_out = current_micros;
+        if( clock_running ){//andyB ADDED CONDITION
+          next_clock_flag = true;
+          //digitalWrite(clock_out, LOW);
+          //digitalWrite(clock_out_led, HIGH);
+        }
+        clock_out_mult_counter = -1;
+        clock_flag = HIGH;
+        clock_out_state = HIGH;
+      }
+      else if (clock_out_mult < 0) {            //// CLOCK OUT DIVIDER
+        clock_out_div_counter++;
+        int clock_out_mult_temp = -clock_out_mult + 1;
+        if (clock_out_div_counter >= clock_out_mult_temp) {
+          clock_flag = true;
+          //
+          clock_out_state = HIGH;
+          //
+          old_clock_out = current_micros;
+          if( clock_running ){//andyB ADDED CONDITION
+            next_clock_flag = true;
+            //digitalWrite(clock_out, LOW);
+            //digitalWrite(clock_out_led, HIGH);
+          }
+          clock_out_div_counter = 0;
+        }
+
+      }
+      else {                                   //// CLOCK OUT NEUTRAL
+        old_clock_out = current_micros;
+        if( clock_running ){//andyB ADDED CONDITION
+          next_clock_flag = true;
+          //digitalWrite(clock_out, LOW);
+          //digitalWrite(clock_out_led, HIGH);
+        }
+        clock_flag = HIGH;
+        clock_out_state = HIGH;
+      }
+
+
+
+
+      if (start_on) {                               ////// count tics to modify the clock in, bearing in mind the clk in mult, this triggers the change of address and step
+        if (clk_in_mult > 0) {
+          ext_clock_mult = ext_clock / (clk_in_mult + 1);
+          gate_out_window = ext_clock;
+          next_address_flag = true;
+          next_step_flag = true;
+          old_micros_mult = current_micros;
+          gate_counter_old = current_micros;
+          next_address_stamp = current_micros;
+          repetitions_counter = 0;
+        }
+        else if (clk_in_mult < 0) {
+          ext_clock_mult = ext_clock * (-clk_in_mult + 1);
+          gate_out_window = ext_clock_mult;
+          division_counter++;
+          if (division_counter > (-clk_in_mult)) {
+            division_counter = 0;
+            next_address_flag = true;
+            next_step_flag = true;
+            old_micros_mult = current_micros;
+            gate_counter_old = current_micros;
+            next_address_stamp = current_micros;
+          }
+        }
+        else {
+          ext_clock_mult = ext_clock;
+          gate_out_window = ext_clock_mult;
+          next_address_flag = true;
+          next_step_flag = true;
+          old_micros_mult = current_micros;
+          gate_counter_old = current_micros;
+          next_address_stamp = current_micros;
+        }
+      }
+    }
+  }
+  else {                                                            ///// clock internal
+    if (current_micros > old_internal_clock + main_tempo) {
+      old_internal_clock = current_micros;
+      if (one_shot_start) {
+        one_shot_start = false;
+        one_shot_state = true;
+        address_counter = 7;
+        start_on = true;
+        repetition_counter = 0;
+        first_one_shot_step = true;
+        clock_out_state = LOW;
+      }
+      if (first_start) {
+        first_start = false;
+        address_counter = 7;
+        repetition_counter = 0;
+        clock_out_state = LOW;
+      }
+
+      calculate_clock_out ();
+      if (clock_out_mult > 0) {                 /// CLOCK OUT MULTIPLIER
+        old_clock_out = current_micros;
+        if( clock_running ){//andyB ADDED CONDITION
+          next_clock_flag = true;
+          //digitalWrite(clock_out, LOW);
+          //digitalWrite(clock_out_led, HIGH);
+        }
+        clock_out_mult_counter = -1;
+        clock_flag = HIGH;
+        clock_out_state = HIGH;
+      }
+      else if (clock_out_mult < 0) {            //// CLOCK OUT DIVIDER
+        clock_out_div_counter++;
+        int clock_out_mult_temp = -clock_out_mult;
+        if (clock_out_div_counter >= clock_out_mult_temp) {
+          clock_flag = false;
+          //
+          clock_out_state = !clock_out_state;
+          //
+          old_clock_out = current_micros;
+          if( clock_running||(clock_out_state=HIGH) ){//andyB ADDED CONDITION,let's it turn off clock in case it locks up
+            digitalWrite(clock_out, clock_out_state);
+            digitalWrite(clock_out_led, !clock_out_state);
+          }
+          clock_out_div_counter = 0;
+        }
+      }
+      else {                                   //// CLOCK OUT NEUTRAL
+        old_clock_out = current_micros;
+        if( clock_running ) {//andyB ADDED CONDITION
+          next_clock_flag = true;
+          //digitalWrite(clock_out, LOW);
+          //digitalWrite(clock_out_led, HIGH);
+        }
+        clock_flag = HIGH;
+        clock_out_state = HIGH;
+      }
+      if (start_on) {
+        next_address_flag = true;
+        next_step_flag = true;
+        old_micros_mult = current_micros;
+        gate_counter_old = current_micros;
+      }
+    }
+  }
+  if ((digitalRead(clock_input)) && (external_clock_first)) external_clock_first = 0;
 
 }
 
-void loop() {
+void event_control () {
 
-  //// TEMPO ENCODER OR RANGE ADJUST WITH ENCODER
   current_micros = micros();
-  read_clock_detect_input ();
-  read_encoder ();
-  read_internal_clock_tap ();
-  read_start_toggle ();
-  read_one_shot_reset_input ();
-  read_one_shot_reset_toggle ();
-  read_address ();
+  if (start_on) {
+    if ( current_micros > old_micros_mult + mult_tempo) {                  //// GATE CONTROL
+      if (((current_micros <  next_address_stamp  + gate_out_window) && clock_detect) || !clock_detect) {
+        old_micros_mult = current_micros;
+        gate_counter_old = current_micros;
+        next_step_flag = true;
+        if (clock_detect) {
+          if (clk_in_mult > 0) {
+            repetitions_counter++;
+            if (repetitions_counter >= mult_amount ) {
+              next_address_flag = true;
+              repetitions_counter = 0;
+            }
+          }
+        }
+      }
+    }
+  }
+  else {
+    read_mult_pot ();
+  }
+}
+
+void check_one_shot_windows () {
+  if (one_shot_window) {
+    if (current_micros > next_one_shot_window_close) {
+      one_shot_window = false;
+    }
+  }
+}
+
+void control_eoc () {
+  if (next_eoc) {
+    if (eoc_state) {
+      if (current_micros > eoc_time) {
+        digitalWrite (eoc_out, !eoc_state);
+        eoc_state = false;
+        eoc_time = current_micros + 10000;
+      }
+    }
+    else {
+      if (current_micros > eoc_time) {
+        digitalWrite (eoc_out, !eoc_state);
+        next_eoc = false;
+      }
+    }
+  }
+}
+
+void next_address () {
+  if (next_address_flag == true) {
+    next_address_flag = false;
+    address_counter++;
+    address_counter = address_counter & B00000111;
+    if (counter_active) {
+      refresh_mux (address_counter);                                             //// COUNTER ACTIVE ( address pot minimum)
+    }
+    else {                                                                        //// COUNTER INACTIVE
+      refresh_mux (selected_step);
+    }
+    if (address_counter == 7) {
+      if (clock_detect) {
+        eoc_time = current_micros + ext_clock_mult - 1000;
+      }
+      else {
+        eoc_time = current_micros + internal_tempo - 1000;
+      }
+      next_eoc = true;
+      eoc_state = true;
+    }
+  }
+}
+
+void next_step () {
+  if (next_step_flag) {
+    next_step_flag = false;
+    gate_counter_old = current_micros;
+    old_micros_mult = current_micros;
+
+    gate_delay_counter = current_micros;
+    gate_delay_flag = true;
+
+    if (address_counter == 7) {
+      if (one_shot_state) {
+        repetition_counter ++;
+        if (repetition_counter > (mult_amount - 1)) {
+          repetition_counter = 0;
+          one_shot_state = false;
+          next_start_on = true;
+          start_on = false;
+        }
+      }
+    }
+  }
+}
+
+void gate_delay () {
+  if (gate_delay_flag) {
+    if (current_micros > gate_delay_counter + gate_delay_amount) {
+      gate_delay_flag = false;
+      read_mult_pot ();
+      if (!no_gate) {
+        digitalWrite(all_gate_out, LOW);
+      }
+      else {
+        digitalWrite(all_gate_out, HIGH);
+      }
+    }
+  }
+}
+
+void gate_to_low_control () {
+  /// GATE GOING-LOW CONTROL
+  gate_counter = micros();
+  if (no_gate_or_full) {
+    if ( gate_counter > gate_counter_old + mult_tempo - full_gate_down ) {
+      digitalWrite(all_gate_out, HIGH);
+      gate_counter_old  = gate_counter;
+    }
+  }
+  else {
+    if ( gate_counter > gate_counter_old + (mult_tempo >> 1)) {              /// gate going LOW
+      digitalWrite(all_gate_out, HIGH);
+      gate_counter_old  = gate_counter;
+    }
+  }
+}
 
 
 
 
-  borra_counter = millis();
-  if (borra_counter > borra_old_counter + 1000) {
-    borra_old_counter = borra_counter;
-    //Serial.print("clk_detect: ");           Serial.print(clock_detect);
-    //Serial.print("// main_tempo: ");        Serial.println(main_tempo);
-    //Serial.print("// start_on: ");          Serial.print(start_on);
-    //Serial.print("// one_shot_state: ");    Serial.print(one_shot_state);
-    //Serial.print("// borra_reset: ");       Serial.print(borra_reset);
-    //Serial.print("// counter_active: ");    Serial.print(counter_active);
-    //Serial.print(" // clk_in_mult: ");        Serial.print(clk_in_mult);
-    //Serial.print(" // clk_out_mult: ");        Serial.print(clock_out_mult);
-    //Serial.print(" // mul_aomunt: ");        Serial.println(mult_amount);
-    //Serial.print(" // range_value: ");        Serial.println(range_value);
-    //Serial.print(" // INT: ");        Serial.println(main_tempo);
-      //  Serial.print(" // No_clk_out: ");        Serial.println(no_clock_out_when_stop);
+
+void control_clock_out () {
+
+  if( next_clock_flag){// andyB, I've delayed it till now so clock pulse can't be started before Mex switch advances.
+    next_clock_flag = false; 
+    digitalWrite(clock_out, LOW);
+    digitalWrite(clock_out_led, HIGH);
   }
 
-  //one_shot_reset_control ();
-  read_clock() ;
-  event_control();
-  check_one_shot_windows ();
-  control_eoc ();
-  next_address();
-  next_step();
-  gate_delay();
-  control_clock_out();
-  gate_to_low_control ();
-  if(timer1_interrupt_flag){//andyB 
-    encoder->service();//andyB, not essential to do this, but should help timing
-    timer1_interrupt_flag = false;
+  if ((start_on  || one_shot_window) || (!start_on && clock_detect)  || (!start_on && !no_clock_out_when_stop && !clock_detect)) {
+
+    if (clock_flag) {
+      if (clock_out_mult > 0) {                 /// CLOCK OUT MULTIPLIER
+        if (clock_out_state) {
+          if (current_micros > old_clock_out + (clock_out_tempo >> 1) ) {
+            digitalWrite(clock_out, HIGH);
+            if (clock_out_led_always_high) {
+              digitalWrite(clock_out_led, HIGH);
+            }
+            else {
+              digitalWrite(clock_out_led, LOW);
+            }
+            old_clock_out = current_micros;
+            clock_out_mult_counter++;
+            clock_out_state = LOW;
+            if (clock_out_mult_counter >= clock_out_mult) {
+              clock_flag = false;
+            }
+          }
+        }
+        else {
+          if (current_micros > old_clock_out + (clock_out_tempo >> 1) ) {
+            digitalWrite(clock_out, LOW);
+            digitalWrite(clock_out_led, HIGH);
+            old_clock_out = current_micros;
+            clock_out_state = HIGH;
+          }
+        }
+
+      }
+      else if (clock_out_mult < 0) {            //// CLOCK OUT DIVIDER
+
+        if (current_micros > old_clock_out + (clock_out_tempo >> 1)) {
+          digitalWrite(clock_out, HIGH);
+          if (clock_out_led_always_high) {
+            digitalWrite(clock_out_led, HIGH);
+          }
+          else {
+            digitalWrite(clock_out_led, LOW);
+          }
+          old_clock_out = current_micros;
+          clock_flag = false;
+        }
+
+      }
+      else {                                   //// CLOCK OUT NEUTRAL
+        if (current_micros > old_clock_out + (clock_out_tempo >> 1)) {
+          digitalWrite(clock_out, HIGH);
+          if (clock_out_led_always_high) {
+            digitalWrite(clock_out_led, HIGH);
+          }
+          else {
+            digitalWrite(clock_out_led, LOW);
+          }
+          old_clock_out = current_micros + 500;
+          clock_flag = false;
+        }
+      }
+    }
   }
+  else {
+    digitalWrite(clock_out, HIGH);
+    if (clock_out_led_always_high) {
+      digitalWrite(clock_out_led, HIGH);
+    }
+    else {
+      digitalWrite(clock_out_led, LOW);
+    }
+  }
+}
+void calculate_clock_out () {
+  if (clock_out_mult > 0) {
+    if (!clock_detect) {
+      clock_out_tempo = internal_tempo / (clock_out_mult + 1);
+    }
+    else {
+      clock_out_tempo = ext_clock / (clock_out_mult + 1);
+    }
+  }
+
+  else if (clock_out_mult < 0) {
+    int clock_out_mult_temp = -clock_out_mult + 1;
+    if (!clock_detect) {
+      clock_out_tempo = internal_tempo * clock_out_mult_temp;
+    }
+    else {
+      clock_out_tempo = ext_clock * clock_out_mult_temp;
+    }
+  }
+
+  else {
+    if ( !clock_detect) {
+      clock_out_tempo = internal_tempo;
+    }
+    else {
+      clock_out_tempo = ext_clock;
+    }
+  }
+}
+
+void refresh_mux (byte myAddress) {
+  bool address1 = bitRead(myAddress, 0);
+  bool address2 = bitRead(myAddress, 1);
+  bool address3 = bitRead(myAddress, 2);
+  digitalWrite(enable_mux, LOW);
+  digitalWrite(mux_A_0_pin, address1);
+  digitalWrite(mux_A_1_pin, address2);
+  digitalWrite(mux_A_2_pin, address3);
+  digitalWrite(enable_mux, HIGH);
+}
+
+
+void change_no_odds_clock_out () {
+  if (clock_out_mult < -20) {
+    clock_out_mult = -32;
+    no_odd_clock_out_index = 0;
+  }
+  else if ((clock_out_mult > -20) && (clock_out_mult < -10)) {
+    clock_out_mult = -15;
+    no_odd_clock_out_index = 1;
+  }
+  else if ((clock_out_mult >= -10) && (clock_out_mult < -5)) {
+    clock_out_mult = -7;
+    no_odd_clock_out_index = 2;
+  }
+  else if ((clock_out_mult >= -5) && (clock_out_mult < -2)) {
+    clock_out_mult = -3;
+    no_odd_clock_out_index = 3;
+  }
+  else if ((clock_out_mult >= -2) && (clock_out_mult < 0)) {
+    clock_out_mult = -1;
+    no_odd_clock_out_index = 4;
+  }
+  else if (clock_out_mult == 0) {
+    clock_out_mult = 0;
+    no_odd_clock_out_index = 5;
+  }
+  else if ((clock_out_mult > 0) && (clock_out_mult <= 2)) {
+    clock_out_mult = 3;
+    no_odd_clock_out_index = 6;
+  }
+  else {
+    clock_out_mult = 7;
+    no_odd_clock_out_index = 7;
+  }
+}
+
+void change_no_odds_clock_in () {
+  if (clk_in_mult < -20) {
+    clk_in_mult = -32;
+    no_odd_clock_in_index = 0;
+  }
+  else if ((clk_in_mult > -20) && (clk_in_mult < -10)) {
+    clk_in_mult = -15;
+    no_odd_clock_in_index = 1;
+  }
+  else if ((clk_in_mult >= -10) && (clk_in_mult < -5)) {
+    clk_in_mult = -7;
+    no_odd_clock_in_index = 2;
+  }
+  else if ((clk_in_mult >= -5) && (clk_in_mult < -2)) {
+    clk_in_mult = -3;
+    no_odd_clock_in_index = 3;
+  }
+  else if ((clk_in_mult >= -2) && (clk_in_mult < 0)) {
+    clk_in_mult = -1;
+    no_odd_clock_in_index = 4;
+  }
+  else if (clk_in_mult == 0) {
+    clk_in_mult = 0;
+    no_odd_clock_in_index = 5;
+  }
+  else if ((clk_in_mult > 0) && (clk_in_mult <= 2)) {
+    clk_in_mult = 3;
+    no_odd_clock_in_index = 6;
+  }
+  else {
+    clk_in_mult = 7;
+    no_odd_clock_in_index = 7;
+  }
+}
+
+void initial_blink () {
+  digitalWrite(clock_out, HIGH);
+  for (byte myRepetitions = 0 ; myRepetitions < 2 ; myRepetitions++) {
+    for (unsigned int myTime = 0; myTime < blink_time ; myTime++) {
+      digitalWrite(enable_mux, LOW);
+      delay(1);
+    }
+    for (unsigned int myTime = 0; myTime < blink_time ; myTime++) {
+      for (byte myAddress = 0 ; myAddress < 8 ; myAddress++) {
+        bool address1 = bitRead(myAddress, 0);
+        bool address2 = bitRead(myAddress, 1);
+        bool address3 = bitRead(myAddress, 2);
+        digitalWrite(enable_mux, LOW);
+        digitalWrite(mux_A_0_pin, address1);
+        digitalWrite(mux_A_1_pin, address2);
+        digitalWrite(mux_A_2_pin, address3);
+        digitalWrite(enable_mux, HIGH);
+        delayMicroseconds(200);
+      }
+    }
+  }
+  digitalWrite(clock_out, LOW);
+}
+
+void confirmation_blink (bool myState) {
+
+  if (myState) {
+    for (byte myAddress = 0 ; myAddress < 8 ; myAddress++) {
+      bool address1 = bitRead(myAddress, 0);
+      bool address2 = bitRead(myAddress, 1);
+      bool address3 = bitRead(myAddress, 2);
+      digitalWrite(enable_mux, LOW);
+      digitalWrite(mux_A_0_pin, address1);
+      digitalWrite(mux_A_1_pin, address2);
+      digitalWrite(mux_A_2_pin, address3);
+      digitalWrite(enable_mux, HIGH);
+      delay(75);
+    }
+  }
+  else {
+    byte myAddress = 7;
+    for (byte myAddress = 7 ; myAddress > 0 ; myAddress--) {
+      bool address1 = bitRead(myAddress, 0);
+      bool address2 = bitRead(myAddress, 1);
+      bool address3 = bitRead(myAddress, 2);
+      digitalWrite(enable_mux, LOW);
+      digitalWrite(mux_A_0_pin, address1);
+      digitalWrite(mux_A_1_pin, address2);
+      digitalWrite(mux_A_2_pin, address3);
+      digitalWrite(enable_mux, HIGH);
+      delay(75);
+    }
+
+
+  }
+
 }
