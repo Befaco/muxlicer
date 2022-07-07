@@ -661,6 +661,18 @@ void read_clock () {
    *This solution found by trial and error based on guesswork, I haven't traced out all the code.
    *I've tested the clock out as best I can, it seems just as good.
    *There may be cases where clock is missing or late that I did not find, if so...revert!
+   *
+   *Since inclusion of the above in the official firmware I had a problem when using Mex
+   *where a spurous trigger would occur on a switched off step when the previous one was switched to clock.
+   *This pulse was very short, indicative that the next clock pulse had arrived at Mex before the switch address had
+   *advanced.
+   *I've moved the code to physically start the clock pulse from read_clock() to control_clock_out().
+   *This has solved the problem with the Mex.
+   *If timing of the clock out has suffered then further work will be needed.
+   *The interrupt that powers the encoder could be replaced with a 1mS counter in the loop.
+   *Any digitalWrite() between read_clock() and control_clock_out() would need moving if possible.
+   *
+   *
    */
   bool clock_running = true;// andyB SET UP NEW VARIABLE
   clock_running = !no_clock_out_when_stop||start_on||one_shot_window;//i.e. clock is always running, unless Mux is stopped and "no_clock_out_when_stop" 
@@ -694,8 +706,9 @@ void read_clock () {
       if (clock_out_mult > 0) {                 /// CLOCK OUT MULTIPLIER
         old_clock_out = current_micros;
         if( clock_running ){//andyB ADDED CONDITION
-          digitalWrite(clock_out, LOW);
-          digitalWrite(clock_out_led, HIGH);
+          next_clock_flag = true;
+          //digitalWrite(clock_out, LOW);
+          //digitalWrite(clock_out_led, HIGH);
         }
         clock_out_mult_counter = -1;
         clock_flag = HIGH;
@@ -711,8 +724,9 @@ void read_clock () {
           //
           old_clock_out = current_micros;
           if( clock_running ){//andyB ADDED CONDITION
-            digitalWrite(clock_out, LOW);
-            digitalWrite(clock_out_led, HIGH);
+            next_clock_flag = true;
+            //digitalWrite(clock_out, LOW);
+            //digitalWrite(clock_out_led, HIGH);
           }
           clock_out_div_counter = 0;
         }
@@ -721,8 +735,9 @@ void read_clock () {
       else {                                   //// CLOCK OUT NEUTRAL
         old_clock_out = current_micros;
         if( clock_running ){//andyB ADDED CONDITION
-          digitalWrite(clock_out, LOW);//bug
-          digitalWrite(clock_out_led, HIGH);
+          next_clock_flag = true;
+          //digitalWrite(clock_out, LOW);
+          //digitalWrite(clock_out_led, HIGH);
         }
         clock_flag = HIGH;
         clock_out_state = HIGH;
@@ -790,8 +805,9 @@ void read_clock () {
       if (clock_out_mult > 0) {                 /// CLOCK OUT MULTIPLIER
         old_clock_out = current_micros;
         if( clock_running ){//andyB ADDED CONDITION
-          digitalWrite(clock_out, LOW);
-          digitalWrite(clock_out_led, HIGH);
+          next_clock_flag = true;
+          //digitalWrite(clock_out, LOW);
+          //digitalWrite(clock_out_led, HIGH);
         }
         clock_out_mult_counter = -1;
         clock_flag = HIGH;
@@ -816,8 +832,9 @@ void read_clock () {
       else {                                   //// CLOCK OUT NEUTRAL
         old_clock_out = current_micros;
         if( clock_running ) {//andyB ADDED CONDITION
-          digitalWrite(clock_out, LOW);
-          digitalWrite(clock_out_led, HIGH);
+          next_clock_flag = true;
+          //digitalWrite(clock_out, LOW);
+          //digitalWrite(clock_out_led, HIGH);
         }
         clock_flag = HIGH;
         clock_out_state = HIGH;
@@ -971,7 +988,11 @@ void gate_to_low_control () {
 
 void control_clock_out () {
 
-
+  if( next_clock_flag){// andyB, I've delayed it till now so clock pulse can't be started before Mex switch advances.
+    next_clock_flag = false; 
+    digitalWrite(clock_out, LOW);
+    digitalWrite(clock_out_led, HIGH);
+  }
 
   if ((start_on  || one_shot_window) || (!start_on && clock_detect)  || (!start_on && !no_clock_out_when_stop && !clock_detect)) {
 

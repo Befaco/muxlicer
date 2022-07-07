@@ -9,10 +9,11 @@
 ClickEncoder *encoder;
 int16_t lastEncoderValue, encoderValue;
 
+bool timer1_interrupt_flag = false;
 void timerIsr() {
-  encoder->service();
+  //encoder->service();//andyB, if this is called at the wrong point in loop there can be a spurious clock from Mex
+  timer1_interrupt_flag = true;// so just flag it needs to be done
 }
-
 
 
 //// PORTS DEFINITION
@@ -46,6 +47,7 @@ const int eoc_out = 11;
 
 bool next_step_flag = false;
 bool next_address_flag = false;
+bool next_clock_flag = false;
 
 unsigned long main_tempo = 250000;
 unsigned long old_main_tempo = 250000;
@@ -252,8 +254,8 @@ void setup() {
 
   /// Encoder
   encoder = new ClickEncoder(encoder_A, encoder_B, encoder_button);
-  Timer1.initialize(1000);
-  Timer1.attachInterrupt(timerIsr);
+  Timer1.initialize(100); //changed from 1000 to 100 for faster PWM to avoid ripple at CV Out
+  Timer1.attachInterrupt(timerIsr);//andyB causes issue with extra triggers
 
 
   /// read TEMPO from EEPROM
@@ -394,4 +396,8 @@ void loop() {
   gate_delay();
   control_clock_out();
   gate_to_low_control ();
+  if(timer1_interrupt_flag){//andyB 
+    encoder->service();//andyB, not essential to do this, but should help timing
+    timer1_interrupt_flag = false;
+  }
 }
