@@ -28,12 +28,11 @@ We normally use an USBasp programmer like this one https://www.ebay.com/itm/USBA
 2. Download Arduino IDE
 Go to the official Arduino website https://www.arduino.cc/en/Main/Software and download the latest version of Arduino IDE for your operating system and install it.
 
-3. Download the firmware:  
-Download this repository. Go to (https://github.com/Befaco/muxlicer/releases/tag/v1.5) and open the muxlicer.ino file on Arduino IDE
+3. Download the firmware:   Go to (https://github.com/Befaco/muxlicer/releases/tag/v1.5) and open the muxlicer.ino file on Arduino IDE
 
 4. Download the libraries: 
  
-[TimerOne](http://playground.arduino.cc/Code/Timer1) Also Available from Libraries manager.
+[TimerOne](http://playground.arduino.cc/Code/Timer1) .  Also Available from Libraries manager.
 
 [ClickEncoder](https://github.com/0xPIT/encoder/)
 
