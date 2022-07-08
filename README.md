@@ -21,7 +21,7 @@ Bug fix: Clock out is totally silence when it should be (Bug fix by Andy B. Many
 
 ## Uploading the firmware
 
-1. Get an ICSP Programmer 
+#1. Get an ICSP Programmer 
 We normally use an USBasp programmer like this one https://www.ebay.com/itm/USBASP-USB-ISP-Programmer-for-Atmel-AVR-ATMega328-ATMega32U4-Arduino-/322662323277
 
 2. Download Arduino IDE
