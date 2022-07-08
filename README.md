@@ -22,10 +22,10 @@ Bug fixes: Clock out is totally silence when it should be, Reduced Ripple at CV 
 
 ## Uploading the firmware
 
-1. Get an ICSP Programmer 
+1. Get an ICSP Programmer:
 We normally use an USBasp programmer like this one https://www.ebay.com/itm/USBASP-USB-ISP-Programmer-for-Atmel-AVR-ATMega328-ATMega32U4-Arduino-/322662323277
 
-2. Download Arduino IDE
+2. Download Arduino IDE:
 Go to the official Arduino website https://www.arduino.cc/en/Main/Software and download the latest version of Arduino IDE for your operating system and install it.
 
 3. Download the firmware:   Go to (https://github.com/Befaco/muxlicer/releases/tag/v1.5) and open the muxlicer.ino file on Arduino IDE
