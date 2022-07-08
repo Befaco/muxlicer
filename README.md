@@ -30,7 +30,7 @@ Go to the official Arduino website https://www.arduino.cc/en/Main/Software and d
 3. Download the firmware 
 clone or download thisrepository. Go to https://github.com/Befaco/muxlicer and press "clone or download" to download the repository to your computer. Extract the zip file and copy "firmware" folder to your sketchbook folder. 
 
-4. Install the libraries
+4. Install the libraries.
 Download the libraries  (Rotary encoder) and install them following the instructions from this link https://www.arduino.cc/en/Guide/Libraries
 
 5. Connecting the module
