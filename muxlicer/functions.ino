@@ -439,39 +439,39 @@ void read_address () {
   ///// ADDRESS CV/pot
   address_value = analogRead(address_input);
   switch (address_value) {
-    case 0 ... 112:
+    case 0 ... 110:
       counter_active = LOW;
       selected_step = 7;
       break;
-    case 117 ... 239:
+    case 115 ... 235:
       counter_active = LOW;
       selected_step = 6;
       break;
-    case 244 ... 366:
+    case 240 ... 360:
       counter_active = LOW;
       selected_step = 5;
       break;
-    case 371 ... 493:
+    case 365 ... 485:
       counter_active = LOW;
       selected_step = 4;
       break;
-    case 498 ... 618:
+    case 490 ... 610:
       counter_active = LOW;
       selected_step = 3;
       break;
-    case 625 ... 747:
+    case 615 ... 735:
       counter_active = LOW;
       selected_step = 2;
       break;
-    case 752 ... 874:
+    case 740 ... 860:
       counter_active = LOW;
       selected_step = 1;
       break;
-    case 879 ... 1001:
+    case 865 ... 985:
       counter_active = LOW;
       selected_step = 0;
       break;
-    case 1006 ... 1023:
+    case 990 ... 1023:
       counter_active = HIGH;
       break;
   }
