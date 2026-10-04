@@ -1140,13 +1140,17 @@ void calculate_clock_out () {
 }
 
 void refresh_mux (byte myAddress) {
-  bool address1 = bitRead(myAddress, 0);
-  bool address2 = bitRead(myAddress, 1);
-  bool address3 = bitRead(myAddress, 2);
+  /// Set the address lines with direct port writes instead of one
+  /// digitalWrite per line, so the mux spends far less time switching
+  /// between steps (issue #7). Depends on mux_A_0_pin, mux_A_1_pin and
+  /// mux_A_2_pin being digital pins 6, 7 and 8 (PD6, PD7 and PB0); A2 is
+  /// on another port, so it is still set a few cycles after A0/A1.
   digitalWrite(enable_mux, LOW);
-  digitalWrite(mux_A_0_pin, address1);
-  digitalWrite(mux_A_1_pin, address2);
-  digitalWrite(mux_A_2_pin, address3);
+  byte sreg = SREG;                     /// block interrupts during the read-modify-write, as digitalWrite does
+  cli();
+  PORTD = (PORTD & B00111111) | ((myAddress & B00000011) << 6);   /// A0 -> PD6, A1 -> PD7
+  PORTB = (PORTB & B11111110) | ((myAddress & B00000100) >> 2);   /// A2 -> PB0
+  SREG = sreg;
   digitalWrite(enable_mux, HIGH);
 }
 
