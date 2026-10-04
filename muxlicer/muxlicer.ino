@@ -9,10 +9,18 @@
 ClickEncoder *encoder;
 int16_t lastEncoderValue, encoderValue;
 
-bool timer1_interrupt_flag = false;
+/// Timer1 runs every 100 us (10 kHz PWM to avoid ripple at CV out), but
+/// ClickEncoder expects service() every 1 ms (acceleration is tuned per
+/// call), so the service flag is only raised every 10th interrupt.
+#define ENCODER_SERVICE_DIVIDER 10
+volatile bool timer1_interrupt_flag = false;
+volatile byte timer1_interrupt_counter = 0;
 void timerIsr() {
   //encoder->service();//andyB, if this is called at the wrong point in loop there can be a spurious clock from Mex
-  timer1_interrupt_flag = true;// so just flag it needs to be done
+  if (++timer1_interrupt_counter >= ENCODER_SERVICE_DIVIDER) {
+    timer1_interrupt_counter = 0;
+    timer1_interrupt_flag = true;// so just flag it needs to be done
+  }
 }
 
 /// External clock edge capture via pin change interrupt (PD4 / PCINT20).
