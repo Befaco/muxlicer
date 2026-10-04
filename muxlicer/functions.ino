@@ -4,7 +4,8 @@ void read_clock_detect_input () {
     if (first_no_clock_detect) {
       first_no_clock_detect = false;
       clk_in_mult = 0;
-      write_clock_in_mult_to_EEPROM ();
+      EEPROM_modified = true;      /// defer the write; see service_pending_EEPROM_writes()
+      EEPROM_counter = current_micros;
     }
   }
   else {
@@ -199,14 +200,6 @@ void read_encoder () {
       }
     }
   }
-  if (EEPROM_modified) {
-    if (current_micros > EEPROM_counter + 3000000) {
-      EEPROM_modified = false;
-      write_tempo_to_EEPROM ();
-      write_clock_in_mult_to_EEPROM ();
-    }
-  }
-
 }
 
 
@@ -252,11 +245,11 @@ void read_internal_clock_tap () {
     bitWrite(encoder_button_state, 1, 0);
     if (range_changed) {
       range_changed = false;
-      write_range_to_EEPROM();
+      range_write_pending = true;      /// defer the write; see service_pending_EEPROM_writes()
     }
     if (clk_out_mul_changed) {
       clk_out_mul_changed = false;
-      write_clock_out_mult_to_EEPROM();
+      clock_out_mult_write_pending = true;
     }
   }
 }
@@ -315,6 +308,28 @@ void write_no_odd_clocks_to_EEPROM () {
 
 void write_no_clock_when_stop_to_EEPROM () {
   EEPROM.write(15, no_clock_out_when_stop);
+}
+
+void service_pending_EEPROM_writes () {
+  /// EEPROM.write blocks ~3.3 ms per byte; a stall that long delays step,
+  /// gate and clock out timing, so pending writes are only performed while
+  /// the sequencer is stopped.
+  if (start_on) return;
+  if (EEPROM_modified) {
+    if (current_micros > EEPROM_counter + 3000000) {
+      EEPROM_modified = false;
+      write_tempo_to_EEPROM ();
+      write_clock_in_mult_to_EEPROM ();
+    }
+  }
+  if (range_write_pending) {
+    range_write_pending = false;
+    write_range_to_EEPROM ();
+  }
+  if (clock_out_mult_write_pending) {
+    clock_out_mult_write_pending = false;
+    write_clock_out_mult_to_EEPROM ();
+  }
 }
 
 
@@ -380,10 +395,14 @@ void read_start_toggle () {
 void read_one_shot_reset_input () {
   /// RESET CONTROL
 
-  reset_state = digitalRead(reset_input);
-  if ((reset_state == false) && (reset_first == false) ) {                     /// reset_input jack
-
-    reset_first = true;
+  bool do_reset = false;
+  noInterrupts();
+  if (reset_edge) {                                            /// edge captured by the pin change ISR
+    reset_edge = false;
+    do_reset = true;
+  }
+  interrupts();
+  if (do_reset) {                                              /// reset_input jack
     if (start_on) {
       address_counter = 7;
       if (one_shot_state) one_shot_start = true;
@@ -400,9 +419,6 @@ void read_one_shot_reset_input () {
 
       division_counter = -clk_in_mult;
     }
-  }
-  if ((reset_state == true) && (reset_first == true)) {
-    reset_first = false;
   }
 }
 
@@ -437,6 +453,12 @@ void read_one_shot_reset_toggle () {
 
 void read_address () {
   ///// ADDRESS CV/pot
+  /// analogRead blocks for ~112 us; reading once per loop pass dominated
+  /// the loop time and with it the external clock processing latency.
+  /// Reading every 2 ms (500 Hz) is still plenty for the address CV.
+  static unsigned long last_address_read = 0;
+  if (current_micros - last_address_read < 2000) return;
+  last_address_read = current_micros;
   address_value = analogRead(address_input);
   switch (address_value) {
     case 0 ... 110:
@@ -682,10 +704,18 @@ void read_clock () {
   current_micros = micros();
   
   if (clock_detect) {
-    if ((!digitalRead(clock_input)) && (external_clock_first == false)) {                      /// IF THE CLOCK IS NOT HIGH AND IT IS THE FIRST TIME IT IS,
-      ext_clock = current_micros - old_external_clock;
-      old_external_clock =  current_micros;
-      external_clock_first = true;
+    bool clock_edge = false;
+    unsigned long clock_edge_stamp = 0;
+    noInterrupts();
+    if (ext_clock_edge) {                                     /// edge captured by the pin change ISR
+      ext_clock_edge = false;
+      clock_edge_stamp = ext_clock_edge_stamp;
+      clock_edge = true;
+    }
+    interrupts();
+    if (clock_edge) {
+      ext_clock = clock_edge_stamp - old_external_clock;
+      old_external_clock = clock_edge_stamp;
 
       if (one_shot_start) {
         one_shot_start = false;
@@ -704,7 +734,7 @@ void read_clock () {
       }
       calculate_clock_out ();                     /// count the tics to create the clock out bearing in mind the clock out multiplier, triggering
       if (clock_out_mult > 0) {                 /// CLOCK OUT MULTIPLIER
-        old_clock_out = current_micros;
+        old_clock_out = clock_edge_stamp;
         if( clock_running ){//andyB ADDED CONDITION
           next_clock_flag = true;
           //digitalWrite(clock_out, LOW);
@@ -722,7 +752,7 @@ void read_clock () {
           //
           clock_out_state = HIGH;
           //
-          old_clock_out = current_micros;
+          old_clock_out = clock_edge_stamp;
           if( clock_running ){//andyB ADDED CONDITION
             next_clock_flag = true;
             //digitalWrite(clock_out, LOW);
@@ -733,7 +763,7 @@ void read_clock () {
 
       }
       else {                                   //// CLOCK OUT NEUTRAL
-        old_clock_out = current_micros;
+        old_clock_out = clock_edge_stamp;
         if( clock_running ){//andyB ADDED CONDITION
           next_clock_flag = true;
           //digitalWrite(clock_out, LOW);
@@ -752,9 +782,9 @@ void read_clock () {
           gate_out_window = ext_clock;
           next_address_flag = true;
           next_step_flag = true;
-          old_micros_mult = current_micros;
-          gate_counter_old = current_micros;
-          next_address_stamp = current_micros;
+          old_micros_mult = clock_edge_stamp;
+          gate_counter_old = clock_edge_stamp;
+          next_address_stamp = clock_edge_stamp;
           repetitions_counter = 0;
         }
         else if (clk_in_mult < 0) {
@@ -765,9 +795,9 @@ void read_clock () {
             division_counter = 0;
             next_address_flag = true;
             next_step_flag = true;
-            old_micros_mult = current_micros;
-            gate_counter_old = current_micros;
-            next_address_stamp = current_micros;
+            old_micros_mult = clock_edge_stamp;
+            gate_counter_old = clock_edge_stamp;
+            next_address_stamp = clock_edge_stamp;
           }
         }
         else {
@@ -775,9 +805,9 @@ void read_clock () {
           gate_out_window = ext_clock_mult;
           next_address_flag = true;
           next_step_flag = true;
-          old_micros_mult = current_micros;
-          gate_counter_old = current_micros;
-          next_address_stamp = current_micros;
+          old_micros_mult = clock_edge_stamp;
+          gate_counter_old = clock_edge_stamp;
+          next_address_stamp = clock_edge_stamp;
         }
       }
     }
@@ -847,8 +877,6 @@ void read_clock () {
       }
     }
   }
-  if ((digitalRead(clock_input)) && (external_clock_first)) external_clock_first = 0;
-
 }
 
 void event_control () {

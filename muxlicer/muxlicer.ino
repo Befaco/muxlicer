@@ -15,6 +15,32 @@ void timerIsr() {
   timer1_interrupt_flag = true;// so just flag it needs to be done
 }
 
+/// External clock edge capture via pin change interrupt (PD4 / PCINT20).
+/// The clock input used to be polled in loop(), so edge detection jittered
+/// by one loop pass and pulses could be missed entirely during blocking
+/// calls (e.g. EEPROM writes). The ISR only stores a timestamp; all
+/// processing stays in read_clock().
+volatile bool ext_clock_edge = false;
+volatile unsigned long ext_clock_edge_stamp = 0;
+
+ISR(PCINT2_vect) {
+  if (!(PIND & (1 << PIND4))) {    /// falling edge of the incoming clock (non-inverting input) - same edge the polled code used
+    ext_clock_edge_stamp = micros();
+    ext_clock_edge = true;
+  }
+}
+
+/// Reset input edge capture via pin change interrupt (PC3 / PCINT11),
+/// for the same reason as the external clock above: a polled reset pulse
+/// could be missed during blocking calls.
+volatile bool reset_edge = false;
+
+ISR(PCINT1_vect) {
+  if (!(PINC & (1 << PINC3))) {    /// rising edge of the incoming reset (input stage inverts) - same edge the polled code used
+    reset_edge = true;
+  }
+}
+
 
 //// PORTS DEFINITION
 
@@ -145,9 +171,6 @@ bool second_gate = false;
 
 bool no_gate_or_full = false;
 
-bool external_clock_first = false;
-bool reset_first = false;
-bool reset_state = false;
 bool one_shot_state = false;
 bool one_shot_first = false;
 bool one_shot_start = false;
@@ -183,6 +206,8 @@ int no_odd_clock_in_index = 0;
 
 bool EEPROM_modified = false;
 unsigned long EEPROM_counter = 0;
+bool range_write_pending = false;
+bool clock_out_mult_write_pending = false;
 
 
 bool new_code = false;
@@ -231,6 +256,12 @@ void setup() {
   pinMode (start_stop_input, INPUT_PULLUP);
   pinMode (one_shot_switch, INPUT_PULLUP);
   pinMode (clock_input, INPUT_PULLUP);
+
+  /// pin change interrupts for the external clock and reset inputs
+  PCICR |= (1 << PCIE2);      /// enable pin change interrupt group 2 (PORTD)
+  PCMSK2 |= (1 << PCINT20);   /// PD4 = clock_input
+  PCICR |= (1 << PCIE1);      /// enable pin change interrupt group 1 (PORTC)
+  PCMSK1 |= (1 << PCINT11);   /// PC3 (A3) = reset_input
 
 
   pinMode (encoder_button, INPUT_PULLUP);
@@ -396,7 +427,8 @@ void loop() {
   gate_delay();
   control_clock_out();
   gate_to_low_control ();
-  if(timer1_interrupt_flag){//andyB 
+  service_pending_EEPROM_writes ();
+  if(timer1_interrupt_flag){//andyB
     encoder->service();//andyB, not essential to do this, but should help timing
     timer1_interrupt_flag = false;
   }
