@@ -140,6 +140,7 @@ bool start_stop_down_first = true;
 
 unsigned long  current_external_clock = 0;
 unsigned long  ext_clock = 0;
+unsigned long  last_clock_interval = 0;
 unsigned long  ext_clock_mult = 0;
 unsigned long  old_micros_address = 0;
 unsigned long  old_external_clock = 0;

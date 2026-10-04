@@ -405,6 +405,8 @@ void read_one_shot_reset_input () {
   if (do_reset) {                                              /// reset_input jack
     if (start_on) {
       address_counter = 7;
+      division_counter = -clk_in_mult;   /// re-arm the clock divider so the next clock advances to step 1 right away
+      gate_out_window = 0;               /// hold multiplied steps until the next clock edge re-opens the window
       if (one_shot_state) one_shot_start = true;
     }
     else {
@@ -429,6 +431,8 @@ void read_one_shot_reset_toggle () {
     one_shot_first = true;
     if (start_on) {
       address_counter = 7;
+      division_counter = -clk_in_mult;   /// re-arm the clock divider so the next clock advances to step 1 right away
+      gate_out_window = 0;               /// hold multiplied steps until the next clock edge re-opens the window
       if (one_shot_state) one_shot_start = true;
     }
     else {
@@ -442,8 +446,6 @@ void read_one_shot_reset_toggle () {
       }
       division_counter = -clk_in_mult;
     }
-
-    //division_counter = -clk_in_mult;
   }
   if ((digitalRead(one_shot_switch)) && (one_shot_first == true)) {
     one_shot_first = false;
@@ -714,8 +716,22 @@ void read_clock () {
     }
     interrupts();
     if (clock_edge) {
-      ext_clock = clock_edge_stamp - old_external_clock;
+      unsigned long clock_interval = clock_edge_stamp - old_external_clock;
       old_external_clock = clock_edge_stamp;
+      /// The first edge after the external clock was stopped and restarted
+      /// (e.g. sequencer stop/play) measures the whole pause instead of the
+      /// tempo. Adopting that value stalls multiplied steps for a full clock
+      /// interval and leaves the playhead offset afterwards. Accept an
+      /// interval as the new period only if it is plausible (shorter than
+      /// 3x the current period) or confirmed by a second similar interval
+      /// (a real tempo change); otherwise keep the previous period.
+      if ((ext_clock == 0)
+          || (clock_interval < ext_clock * 3)
+          || ((clock_interval < last_clock_interval + (last_clock_interval >> 2))
+              && (last_clock_interval < clock_interval + (last_clock_interval >> 2)))) {
+        ext_clock = clock_interval;
+      }
+      last_clock_interval = clock_interval;
 
       if (one_shot_start) {
         one_shot_start = false;
